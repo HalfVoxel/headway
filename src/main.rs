@@ -1,9 +1,53 @@
 use std::{thread, time::Duration};
 
-use advance::ProgressBar;
+use advance::{ProgressBar, ProgressBarIterable};
 
 fn main() {
-    // for i in ProgressBar::new().wrap(0..100) {}
+    // for i in ProgressBar::new().wrap(0..) {
+    //     if i > 100 {
+    //         break;
+    //     }
+    //     thread::sleep(Duration::from_millis(10));
+    // }
+
+    // thread::spawn(|| {
+    //     for i in (0..100).progress() {
+    //         if i > 20 {
+    //             panic!("Something went wrong!");
+    //         }
+    //         thread::sleep(Duration::from_millis(50));
+    //     }
+    // })
+    // .join()
+    // .ok();
+
+    // let p = ProgressBar::new();
+    // for (p, i) in p.split_each(0..10) {
+    //     p.set_message(format!("Processing {}", i));
+    //     if i == 5 {
+    //         continue;
+    //     }
+    //     for _ in p.wrap(0..100) {
+    //         thread::sleep(Duration::from_millis(10));
+    //     }
+    // }
+
+    let mut p = ProgressBar::new().split_weighted();
+    let p1 = p.take(0.5);
+    for i in (0..50).progress_with(p1) {
+        thread::sleep(Duration::from_millis(30));
+    }
+    let mut p2 = p.take(0.5);
+    p2.set_length(50);
+    for i in 0..50 {
+        p2.inc();
+        thread::sleep(Duration::from_millis(30));
+    }
+    p2.finish();
+
+    // for i in ProgressBar::new().wrap(0..1) {
+    //     thread::sleep(Duration::from_millis(10000));
+    // }
 
     // for i in ProgressBar::new().wrap(0..100) {
     //     thread::sleep(Duration::from_millis(10));
@@ -117,10 +161,12 @@ fn main() {
 
     // thread::sleep(Duration::from_millis(100 * 150));
 
-    let p = ProgressBar::new().with_message("Doing stuffs");
+    let mut p = ProgressBar::new()
+        .with_message("Doing stuffs")
+        .split_weighted();
     thread::sleep(Duration::from_millis(500));
-    let p1 = p.nest_weighted(0.5).with_message("Step 1");
-    let p2 = p.nest_weighted(0.5).with_message("Step 2");
+    let p1 = p.take(0.5).with_message("Step 1");
+    let p2 = p.take(0.5).with_message("Step 2");
     // Verify that dropping the original progress bar works
     drop(p);
     for _ in p1.wrap(0..1000) {
@@ -132,9 +178,10 @@ fn main() {
 
     let p = ProgressBar::new().with_message("Doing stuffs");
     p.set_length(5);
+    let mut p = p.split_sized();
     for i in 0..10 {
         for _ in p
-            .nest_item()
+            .take(1)
             .with_message(format!("Doing step {}", i))
             .wrap(0..200)
         {
