@@ -153,7 +153,7 @@
 //! ## Styling
 //!
 //! It is currently not possible to style bars in any way.
-//!
+
 use lazy_static::lazy_static;
 use std::collections::hash_map::DefaultHasher;
 use std::fmt::Write;
@@ -173,12 +173,12 @@ use std::{
 
 const BAR_FILLED: char = '█';
 const BAR_EMPTY: char = ' ';
-const BAR_UNKNOWN: char = '░';
 const BAR_ABANDONED: char = 'X';
 const BAR_PARTIALLY_FILLED: [char; 9] = [BAR_EMPTY, '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
-const BAR_UNKNOWN_ANIM: [char; 4] = ['░', '▒', '▓', '█'];
 const BAR_LEFT_BORDER: char = '▕';
 const BAR_RIGHT_BORDER: char = '▏';
+// const BAR_UNKNOWN: char = '░';
+// const BAR_UNKNOWN_ANIM: [char; 4] = ['░', '▒', '▓', '█'];
 
 lazy_static! {
     pub(crate) static ref MANAGER: Arc<Mutex<ProgressBarManager>> =
@@ -406,6 +406,7 @@ impl ProgressBarState {
         }
     }
 
+    /// Number of external references to the children of this bar.
     fn nested_strong_count(&self) -> usize {
         if let Some(nested) = &self.nested {
             nested
@@ -557,9 +558,13 @@ impl ProgressBarState {
 }
 
 struct ProgressBarManager {
+    /// All currently visible bars
     pub bars: Vec<Arc<Mutex<ProgressBarState>>>,
+    /// True if the [`manager_thread`] is running
     pub thread_started: bool,
+    /// True if the output is a tty (terminal)
     interactive_output: bool,
+    /// An arbitrary fixed reference time
     reference_time: Instant,
 }
 
@@ -623,15 +628,17 @@ impl ProgressBarManager {
 
         if !self.bars.is_empty() {
             // Move to start of line N lines up
-            // Together with the clearing below, this will make sure that if something is printed out stdout it will first
-            // remove the progress bars and then print whatever it was printing.
+            // Together with the clearing below, this will make sure that if something is printed to stdout it will first
+            // remove the progress bars and then print the text.
             let prev_lines = self.bars.len();
             write!(out, "\u{001b}[{}F", prev_lines)?;
+            out.flush().unwrap();
+            // then clear everything after the cursor to end of screen.
+            // DO NOT flush after this as that would remove the progress bars.
+            write!(out, "\u{001b}[0J")?;
+        } else {
+            out.flush().unwrap();
         }
-        out.flush().unwrap();
-        // then clear everything after the cursor to end of screen.
-        // DO NOT flush after this.
-        write!(out, "\u{001b}[0J")?;
 
         Ok(is_animating)
     }
