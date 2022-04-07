@@ -1,23 +1,176 @@
+//! A progress bar library with a focus on ergonomics.
+//!
+//! # Usage
+//!
+//! ```
+//! for _ in (0..100).progress() {
+//!     sleep(Duration::from_millis(20));
+//! }
+//! ```
+#![doc=include_str!("../images/simple.html")]
+//!
+//! ## Multiple bars
+//!
+//! Multiple bars are transparently supported. Just create more of them and they will automatically
+//! be placed so that they do not overlap.
+//!
+//! ```
+//! let mut handles = vec![];
+//! for i in 0..5 {
+//!     handles.push(thread::spawn(move || {
+//!         for _ in (0..100).progress() {
+//!             sleep(Duration::from_millis(20 + i * 20));
+//!         }
+//!     }));
+//! }
+//! for handle in handles {
+//!     handle.join().unwrap();
+//! }
+//! ```
+#![doc=include_str!("../images/multiple.html")]
+//!
+//! ## Splitting bars
+//!
+//! You can split bars into smaller bars if you have a task that consists of several sub-tasks.
+//!
+//! ```
+//! let mut p = ProgressBar::new().split_weighted();
+//! let first_half = p.take(0.4).with_message("First part");
+//! let second_half = p.take(0.6).with_message("Second part");
+//! for _ in (0..50).progress_with(first_half) {
+//!     sleep(Duration::from_millis(20));
+//! }
+//! for _ in (0..50).progress_with(second_half) {
+//!     sleep(Duration::from_millis(30));
+//! }
+//! ```
+#![doc=include_str!("../images/split_weighted.html")]
+//!
+//! You can also split in other ways, not just using fractions.
+//!
+//! ```
+//! // Split the bar into bars taking up a fixed fraction of the parent
+//! let mut p = ProgressBar::new().split_weighted();
+//! let first_quarter = p.take(0.25);
+//! let last_three_quarters = p.take(0.75);
+//!
+//! // Split the bar into fixed size nested bars
+//! let p = ProgressBar::new();
+//! p.set_length(50);
+//! let mut p = p.split_sized();
+//! let first_10 = p.take(10);
+//! let another_30 = p.take(30);
+//! let last_10 = p.remaining();
+//!
+//! // Split the bar and display it by summing the progress from each child
+//! let p = ProgressBar::new().split_summed();
+//! let first = p.take();
+//! let second = p.take();
+//!
+//! // Split into several bars, each representing one item of the iterator
+//! let items = &["a", "b", "c", "d"];
+//! for (nested_bar, letter) in ProgressBar::new().split_each(items.iter()) {}
+//! ```
+//!
+//! ## Printing while a progress bar is visible
+//!
+//! Most progress bar libraries have their output messed up in some way if you try to e.g. call `println` while a progress bar is visible.
+//! Either the progress bar gets clobbered, or your printed text gets overwritten, or both!
+//!
+//! This library interacts properly with stdout so you can freely use `println` while a progress bar (or multiple) is visible.
+//! ```
+//! for i in (0..100).progress() {
+//!     if i % 10 == 0 {
+//!         println!("{}", i);
+//!     }
+//!     sleep(Duration::from_millis(20));
+//! }
+//! ```
+#![doc=include_str!("../images/print_during_progress.html")]
+//!
+//! ### Caveats
+//! Printing to stderr has the potential to mess things up. However, if you flush `stdout` before you print to stderr then things should work properly.
+//! If a child process prints to stdout, this also has the potential to mess things up.
+//!
+//! ## Abandoning bars
+//!
+//! If you abandon a bar without finishing it (for example because of a worker thread crashed), then the bar
+//! will draw angry red marks to draw your attention.
+//!
+//! ```
+//! for i in (0..100).progress() {
+//!     if i == 20 {
+//!         panic!("Something went wrong!");
+//!     }
+//!     thread::sleep(Duration::from_millis(50));
+//! }
+//! ```
+#![doc=include_str!("../images/abandonment.html")]
+//!
+//! ## Indeterminate bars
+//!
+//! If the progress bar doesn't have a known length, the bar will show an animation instead.
+//!
+//! ```
+//! for i in (0..).progress() {
+//!     if i == 100 {
+//!         break;
+//!     }
+//!     sleep(Duration::from_millis(50));
+//! }
+//! ```
+#![doc=include_str!("../images/indeterminate.html")]
+//!
+//! ## Styling
+//!
+//! It is currently not possible to style bars in any way.
+//!
 use lazy_static::lazy_static;
 use std::collections::hash_map::DefaultHasher;
+use std::fmt::Write;
 use std::hash::{Hash, Hasher};
-use std::io::Write;
+use std::ops::Range;
 use std::thread;
 use std::time::{Duration, Instant};
+mod progressbar;
+mod splitting;
+pub use progressbar::{ProgressBar, ProgressBarIterable, ProgressBarIterator};
+pub use splitting::*;
 
 use std::{
     io::stdout,
     sync::{Arc, Mutex},
 };
 
+const BAR_FILLED: char = '█';
+const BAR_EMPTY: char = ' ';
+const BAR_UNKNOWN: char = '░';
+const BAR_ABANDONED: char = 'X';
+const BAR_PARTIALLY_FILLED: [char; 9] = [BAR_EMPTY, '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
+const BAR_UNKNOWN_ANIM: [char; 4] = ['░', '▒', '▓', '█'];
+const BAR_LEFT_BORDER: char = '▕';
+const BAR_RIGHT_BORDER: char = '▏';
+
+lazy_static! {
+    pub(crate) static ref MANAGER: Arc<Mutex<ProgressBarManager>> =
+        Arc::new(Mutex::new(ProgressBarManager {
+            bars: vec![],
+            thread_started: false,
+            stdout_buff: None,
+            stderr_buff: None,
+            interactive_output: atty::is(atty::Stream::Stdout),
+            reference_time: Instant::now(),
+        }));
+}
+
 #[derive(PartialEq, Eq, Clone, Copy)]
-enum FinishedState {
+enum LifecycleState {
     InProgress,
     Completed,
     Abandoned,
 }
 
-impl Default for FinishedState {
+impl Default for LifecycleState {
     fn default() -> Self {
         Self::InProgress
     }
@@ -42,8 +195,7 @@ struct ProgressBarState {
     pub position: usize,
     pub message: Option<String>,
     pub nested: Option<NestedBars>,
-    pub finished: FinishedState,
-    pub is_nested: bool,
+    pub lifecycle: LifecycleState,
 }
 
 impl ProgressBarState {
@@ -66,44 +218,39 @@ impl ProgressBarState {
             let mut total_abandoned = 0.0;
             let mut total_in_progress = 0.0;
             match &nested.meta {
-                NestedMeta::Weighted(weights) => {
+                NestedMeta::Sized(weights) | NestedMeta::Weighted(weights) => {
                     for (w, bar) in weights.iter().zip(&nested.bars) {
-                        let (progress, mut in_progress, abandoned, lower_len, upper_len) =
+                        let (mut progress, mut in_progress, abandoned, _lower_len, upper_len) =
                             bar.lock().unwrap().progress_count();
 
                         total_lower_len += w;
                         total_upper_len = total_upper_len.map(|x| x + w);
 
                         if upper_len.is_none() {
-                            in_progress = 1.0 - progress - abandoned;
+                            // If we don't know the upper bound on the length of the child bar, then we can't say anything other than that
+                            // things are in progress, but we don't actually know the percentage progress at all.
+                            progress = 0.0;
+                            in_progress = 1.0 - abandoned;
                         }
                         total_progress += (progress as f64) * w;
                         total_abandoned += (abandoned as f64) * w;
                         total_in_progress += (in_progress as f64) * w;
                     }
 
-                    total_lower_len = total_lower_len.max(1.0);
-                    total_upper_len = total_upper_len.map(|x| x.max(1.0));
-                }
-                NestedMeta::Sized(counts) => {
-                    for (cnt, bar) in counts.iter().zip(&nested.bars) {
-                        let cnt = *cnt;
-                        let (progress, mut in_progress, abandoned, lower_len, upper_len) =
-                            bar.lock().unwrap().progress_count();
-
-                        total_lower_len += cnt;
-                        total_upper_len = total_upper_len.map(|x| x + cnt);
-
-                        if upper_len.is_none() {
-                            in_progress = 1.0 - progress - abandoned;
+                    match nested.meta {
+                        NestedMeta::Weighted(_) => {
+                            // A weighted split is based on fractions. So a natural default is that the whole bar has a size of 1
+                            total_lower_len = total_lower_len.max(1.0);
+                            total_upper_len = total_upper_len.map(|x| x.max(1.0));
                         }
-                        total_progress += (progress as f64) * cnt;
-                        total_abandoned += (abandoned as f64) * cnt;
-                        total_in_progress += (in_progress as f64) * cnt;
-                    }
-                    if let Some(length) = self.length {
-                        total_lower_len = total_lower_len.max(length as f64);
-                        total_upper_len = total_upper_len.map(|x| x.max(length as f64));
+                        NestedMeta::Sized(_) => {
+                            // If the user has manually specified a size for the parent bar then we use that
+                            if let Some(length) = self.length {
+                                total_lower_len = total_lower_len.max(length as f64);
+                                total_upper_len = total_upper_len.map(|x| x.max(length as f64));
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 NestedMeta::Summed => {
@@ -124,6 +271,7 @@ impl ProgressBarState {
                     }
 
                     if let Some(length) = self.length {
+                        // If the user has manually specified a size for the parent bar then we use that
                         total_lower_len = total_lower_len.max(length as f64);
                         if length as f64 >= total_lower_len {
                             total_upper_len = total_upper_len.or(Some(length as f64));
@@ -138,10 +286,6 @@ impl ProgressBarState {
                 total_abandoned /= total_lower_len;
                 total_in_progress /= total_lower_len;
             }
-            debug_assert!(total_progress <= 1.0);
-            debug_assert!(total_abandoned <= 1.0);
-            debug_assert!(total_in_progress <= 1.0);
-            debug_assert!(total_progress + total_abandoned + total_in_progress <= 1.0001);
 
             (
                 total_progress,
@@ -155,7 +299,7 @@ impl ProgressBarState {
             if let Some(length) = self.length {
                 if length > 0 {
                     let clamped_pos = self.position.min(length);
-                    let abandoned_length = if self.finished == FinishedState::Abandoned {
+                    let abandoned_length = if self.lifecycle == LifecycleState::Abandoned {
                         length - clamped_pos
                     } else {
                         0
@@ -169,13 +313,13 @@ impl ProgressBarState {
                     )
                 } else {
                     (
-                        if self.finished == FinishedState::Completed {
+                        if self.lifecycle == LifecycleState::Completed {
                             1.0
                         } else {
                             0.0
                         },
                         0.0,
-                        if self.finished == FinishedState::Abandoned {
+                        if self.lifecycle == LifecycleState::Abandoned {
                             1.0
                         } else {
                             0.0
@@ -185,16 +329,21 @@ impl ProgressBarState {
                     )
                 }
             } else {
-                // Unknown length
-                if self.finished != FinishedState::InProgress {
-                    // Well, it's finished, so the final position becomes the length
-                    (
-                        1.0,
-                        0.0,
-                        0.0,
-                        self.position as f64,
-                        Some(self.position as f64),
-                    )
+                // The bar has an unknown length
+                if self.lifecycle != LifecycleState::InProgress {
+                    // If it's finished the final position becomes the length
+                    if self.lifecycle == LifecycleState::Abandoned && self.position == 0 {
+                        // If the bar was abandoned without any progress being made, then mark 100% of it as abandoned
+                        (0.0, 0.0, 1.0, 0.0, Some(0.0))
+                    } else {
+                        (
+                            1.0,
+                            0.0,
+                            0.0,
+                            self.position as f64,
+                            Some(self.position as f64),
+                        )
+                    }
                 } else {
                     (1.0, 0.0, 0.0, self.position as f64, None)
                 }
@@ -202,125 +351,8 @@ impl ProgressBarState {
         }
     }
 
-    /** Returns a tuple of (items of progress, items that have been abandoned, total length if known) */
-    // fn progress_count(&self) -> (f64, f64, Option<usize>) {
-    //     if self.nested.is_empty() {
-    //         if let Some(length) = self.length {
-    //             let abandoned_length = if self.finished == FinishedState::Abandoned {
-    //                 length - self.position.min(length)
-    //             } else {
-    //                 0
-    //             };
-    //             (
-    //                 self.position.min(length) as f64,
-    //                 abandoned_length as f64,
-    //                 Some(length),
-    //             )
-    //         } else {
-    //             // Unknown length
-    //             if self.finished != FinishedState::InProgress {
-    //                 // Well, it's finished, so the final position becomes the length
-    //                 (self.position as f64, 0.0, Some(self.position))
-    //             } else {
-    //                 (self.position as f64, 0.0, None)
-    //             }
-    //         }
-    //     } else {
-    //         let mut total_length = Some(0);
-    //         let mut total_item_progress = 0.0;
-    //         let mut total_normalized_progress = 0.0;
-    //         let mut total_item_abandoned_progress = 0.0;
-    //         let mut total_normalized_abandoned_progress = 0.0;
-    //         for (prop, bar) in &self.nested {
-    //             let nested_bar = bar.lock().unwrap();
-    //             let (nested_prog, abandoned_prog, nested_len) = nested_bar.progress_count();
-    //             match prop {
-    //                 ScaleMode::PropagateLength => {
-    //                     total_item_progress += nested_prog;
-    //                     total_item_abandoned_progress += abandoned_prog;
-    //                     if let Some(nested_len) = nested_len {
-    //                         total_length = total_length.map(|x| x + nested_len);
-    //                     } else if nested_prog == 0.0 {
-    //                         // This is fine, the nested bar just hasn't had any progress whatsoever.
-    //                         // Regardless of it's length we know it occupied nothing out of its given fraction.
-    //                     } else {
-    //                         // If the nested bar doesn't have a length, but it has some progress, then the total progress is not well defined
-    //                         total_length = None;
-    //                     }
-    //                 }
-    //                 ScaleMode::FractionOfParent(prop) => {
-    //                     if let Some(nested_len) = nested_len {
-    //                         if nested_len > 0 {
-    //                             total_normalized_progress +=
-    //                                 prop.into_inner() * nested_prog / (nested_len as f64);
-    //                             total_normalized_abandoned_progress +=
-    //                                 prop.into_inner() * abandoned_prog / (nested_len as f64);
-    //                         }
-    //                         total_length = total_length.map(|x| x + nested_len);
-    //                     } else {
-    //                         // Nested bar has an unknown length
-    //                         if nested_prog == 0.0 {
-    //                             // This is fine, the nested bar just hasn't had any progress whatsoever.
-    //                             // Regardless of it's length we know it occupied nothing out of its given fraction.
-    //                         } else {
-    //                             // The nested progress bar has an unknown length but we cannot propagate that in a good way
-    //                             total_length = None;
-    //                         }
-    //                     }
-    //                 }
-    //                 ScaleMode::ItemsOfParent(cnt) => {
-    //                     if let Some(nested_len) = nested_len {
-    //                         if nested_len > 0 {
-    //                             total_item_progress +=
-    //                                 (*cnt as f64) * nested_prog / (nested_len as f64);
-    //                             total_item_abandoned_progress +=
-    //                                 (*cnt as f64) * abandoned_prog / (nested_len as f64);
-    //                         }
-    //                         total_length = total_length.map(|x| x + cnt);
-    //                     } else {
-    //                         // Nested bar has an unknown length
-    //                         if nested_prog == 0.0 {
-    //                             // This is fine, the nested bar just hasn't had any progress whatsoever.
-    //                             // Regardless of it's length we know it occupied nothing out of the `cnt` elements it represents in the parent bar
-    //                             total_length = total_length.map(|x| x + cnt);
-    //                         } else {
-    //                             // The nested progress bar has an unknown length and some progress, and we cannot propagate that in a good way.
-    //                             // This makes the progress of the parent bar unknown.
-    //                             total_length = None;
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         }
-
-    //         if let Some(length) = self.length {
-    //             total_length = Some(length);
-    //         }
-
-    //         if let Some(total_length) = total_length {
-    //             total_item_progress += total_normalized_progress * (total_length as f64);
-    //             total_item_progress = total_item_progress.min(total_length as f64);
-
-    //             total_item_abandoned_progress +=
-    //                 total_normalized_abandoned_progress * (total_length as f64);
-    //             total_item_abandoned_progress =
-    //                 total_item_abandoned_progress.min(total_length as f64);
-
-    //             (
-    //                 total_item_progress,
-    //                 total_item_abandoned_progress,
-    //                 Some(total_length),
-    //             )
-    //         } else {
-    //             // Total length is unknown
-    //             // This also means we cannot include normalized progress in a good way
-    //             (total_item_progress, total_item_abandoned_progress, None)
-    //         }
-    //     }
-    // }
-
     fn progress(&self) -> Option<f64> {
-        let (progress, in_progress, abandoned, lower_len, upper_len) = self.progress_count();
+        let (progress, _in_progress, _abandoned, lower_len, upper_len) = self.progress_count();
         if let Some(upper_len) = upper_len {
             if upper_len > 0.0 {
                 Some((progress * lower_len / (upper_len as f64)).clamp(0.0, 1.0))
@@ -341,7 +373,7 @@ impl ProgressBarState {
             completed
         } else {
             let completed = self.length.map(|l| self.position >= l).unwrap_or(false)
-                || self.finished != FinishedState::InProgress;
+                || self.lifecycle != LifecycleState::InProgress;
             visitor(completed, self);
             completed
         }
@@ -360,7 +392,7 @@ impl ProgressBarState {
     }
 
     fn message(&self) -> Option<String> {
-        // Msg of first non-completed bar
+        // Message of first non-completed bar
         // or last completed bar
         let mut msg = None;
         let all_completed = self.visit_completed(&mut |completed, bar| {
@@ -381,11 +413,29 @@ impl ProgressBarState {
         msg
     }
 
-    fn render(&self, out: &mut impl Write, color: bool) -> std::io::Result<()> {
+    fn render_indeterminate_bar(out: &mut String, steps: Range<usize>, reference_time: &Instant) {
+        let t = reference_time.elapsed().as_secs_f64();
+        for i in steps {
+            const BRIGHTNESS_STEPS: usize = 24;
+            let anim_index = ((((2.0 * t + (i as f64) * 0.7).sin() * 0.5 + 0.5)
+                * BRIGHTNESS_STEPS as f64)
+                .floor() as usize)
+                .clamp(0, BRIGHTNESS_STEPS - 1);
+
+            // SAFETY: Writes to strings cannot fail
+            write!(out, "\u{001b}[38;5;{}m{}", 232 + anim_index, BAR_FILLED).unwrap();
+        }
+        out.push_str("\u{001b}[0m");
+    }
+
+    fn render(
+        &self,
+        out: &mut String,
+        color: bool,
+        reference_time: &Instant,
+        is_animating: &mut bool,
+    ) -> std::fmt::Result {
         let bar_width = 20;
-        // let ProgressBarState {
-        //     length, position, ..
-        // } = self;
 
         let (progress_value, in_progress_value, abandoned_value, length_lower, length_upper) =
             self.progress_count();
@@ -403,47 +453,63 @@ impl ProgressBarState {
             } else {
                 0.0
             };
-            let mut filled_steps =
-                (progress_value * bounds_multiplier * bar_width as f64).floor() as usize;
-            let abandoned_steps =
-                (abandoned_value * bounds_multiplier * bar_width as f64).floor() as usize;
 
-            write!(out, "{}", BAR_LEFT_BORDER)?;
-            for _ in 0..filled_steps {
-                write!(out, "{}", BAR_FILLED)?;
+            let filled_pos = progress_value * bounds_multiplier * bar_width as f64;
+            let mut filled_index = filled_pos.floor() as usize;
+            let mut in_progress_index =
+                ((progress_value + in_progress_value) * bounds_multiplier * bar_width as f64)
+                    .floor() as usize;
+            let abandoned_index =
+                ((1.0 - abandoned_value * bounds_multiplier) * bar_width as f64).floor() as usize;
+
+            out.push(BAR_LEFT_BORDER);
+            for _ in 0..filled_index {
+                out.push(BAR_FILLED);
             }
-            if filled_steps < bar_width - abandoned_steps {
-                filled_steps += 1;
-                let partially_filled_step =
-                    ((progress_value * bounds_multiplier * bar_width as f64).fract() * 8.0).floor()
-                        as usize;
-                write!(out, "{}", BAR_PARTIALLY_FILLED[partially_filled_step])?;
+            if filled_index < abandoned_index {
+                let partially_filled_step = (filled_pos.fract() * 8.0).floor() as usize;
+                if partially_filled_step > 0 {
+                    filled_index += 1;
+                    in_progress_index = in_progress_index.max(filled_index);
+                    out.push(BAR_PARTIALLY_FILLED[partially_filled_step]);
+                }
             }
 
-            for _ in filled_steps..bar_width - abandoned_steps {
-                write!(out, "{}", BAR_EMPTY)?;
+            let indeterminate_range = filled_index..in_progress_index;
+            *is_animating |= !indeterminate_range.is_empty();
+            Self::render_indeterminate_bar(out, indeterminate_range, reference_time);
+
+            for _ in in_progress_index..abandoned_index {
+                out.push(BAR_EMPTY);
             }
-            if abandoned_steps > 0 {
+            if abandoned_index < bar_width {
                 if color {
-                    write!(out, "\u{001b}[31m")?;
+                    out.push_str("\u{001b}[31m");
                 }
-                for _ in bar_width - abandoned_steps..bar_width {
-                    write!(out, "{}", BAR_ABANDONED)?;
+                for _ in abandoned_index..bar_width {
+                    out.push(BAR_ABANDONED);
                 }
                 if color {
-                    write!(out, "\u{001b}[0m")?;
+                    out.push_str("\u{001b}[0m");
                 }
             }
-            write!(out, "{}", BAR_RIGHT_BORDER)?;
+            out.push(BAR_RIGHT_BORDER);
         } else {
-            write!(out, "{}", BAR_LEFT_BORDER)?;
-            for _ in 0..bar_width {
-                write!(out, "{}", BAR_UNKNOWN)?;
-            }
-            write!(out, "{}", BAR_RIGHT_BORDER)?;
+            *is_animating = true;
+            out.push(BAR_LEFT_BORDER);
+            Self::render_indeterminate_bar(out, 0..bar_width, reference_time);
+            out.push(BAR_RIGHT_BORDER);
         }
-        if self.nested.is_none() {
-            write!(out, " {}/", progress_value)?;
+
+        // Check if it's a weighted nesting. Those we always display as percentages.
+        if !matches!(
+            self.nested,
+            Some(NestedBars {
+                meta: NestedMeta::Weighted(_),
+                ..
+            })
+        ) {
+            write!(out, " {}/", (progress_value * length_lower).round())?;
             if let Some(length_upper) = length_upper {
                 write!(out, "{}", length_upper)?;
             } else {
@@ -463,22 +529,13 @@ impl ProgressBarState {
     }
 }
 
-lazy_static! {
-    static ref MANAGER: Arc<Mutex<ProgressBarManager>> = Arc::new(Mutex::new(ProgressBarManager {
-        bars: vec![],
-        thread_started: false,
-        stdout_buff: None,
-        stderr_buff: None,
-        interactive_output: atty::is(atty::Stream::Stdout)
-    }));
-}
-
 struct ProgressBarManager {
     pub bars: Vec<Arc<Mutex<ProgressBarState>>>,
     pub thread_started: bool,
     stdout_buff: Option<gag::Hold>,
     stderr_buff: Option<gag::Hold>,
     interactive_output: bool,
+    reference_time: Instant,
 }
 
 impl ProgressBarManager {
@@ -492,16 +549,24 @@ impl ProgressBarManager {
         hasher.finish()
     }
 
-    pub fn tick(&mut self, out: &mut impl Write) -> std::io::Result<()> {
-        let mut temp_output = vec![];
+    pub fn tick(&mut self, out: &mut impl std::io::Write) -> std::io::Result<bool> {
+        let mut temp_output = String::new();
+        let mut is_animating = false;
 
         let mut to_remove = 0;
         for bar in &self.bars {
             let b = bar.lock().unwrap();
             if Arc::strong_count(bar) + b.nested_strong_count() == 1 {
-                // Only the manager has a reference to this bar
-                b.render(&mut temp_output, self.interactive_output)?;
-                writeln!(temp_output)?;
+                // Only the manager has a reference to this bar. This means it has been dropped
+                // everywhere else, and we can safely render it a final time and then forget about it.
+                b.render(
+                    &mut temp_output,
+                    self.interactive_output,
+                    &self.reference_time,
+                    &mut is_animating,
+                )
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                temp_output.push('\n');
                 to_remove += 1;
             } else {
                 break;
@@ -511,41 +576,52 @@ impl ProgressBarManager {
 
         if !self.interactive_output {
             // When we are not writing to a terminal, we only render progress bars when they are finished (or abandoned)
-            out.write_all(&temp_output)?;
+            write!(out, "{}", &temp_output)?;
             out.flush().unwrap();
-            return Ok(());
+            return Ok(is_animating);
         }
 
         for bar in &self.bars {
             bar.lock()
                 .unwrap()
-                .render(&mut temp_output, self.interactive_output)?;
-            writeln!(temp_output)?;
+                .render(
+                    &mut temp_output,
+                    self.interactive_output,
+                    &self.reference_time,
+                    &mut is_animating,
+                )
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            temp_output.push('\n');
         }
 
-        out.write_all(&temp_output)?;
+        write!(out, "{}", &temp_output)?;
         // Flush stdout and stderr which have been buffered since the last tick
         self.stdout_buff = None;
         self.stderr_buff = None;
-        out.flush().unwrap();
 
         if !self.bars.is_empty() {
             // self.stdout_buff = Some(gag::Hold::stdout().unwrap());
             // self.stderr_buff = Some(gag::Hold::stderr().unwrap());
 
             // Move to start of line N lines up and then clear everything after the cursor to end of screen.
-            // DO NOT flush after this
+            // DO NOT flush after this.
+            // This will make sure that if something is printed out stdout it will first
+            // remove the progress bars and then print whatever it was printing.
             let prev_lines = self.bars.len();
-            write!(out, "\u{001b}[{}F\u{001b}[0J", prev_lines).unwrap();
+            write!(out, "\u{001b}[{}F", prev_lines)?;
         }
+        out.flush().unwrap();
+        write!(out, "\u{001b}[0J")?;
 
-        Ok(())
+        Ok(is_animating)
     }
 }
 
+/// Thread which runs while progress bars are visible
 fn manager_thread() {
     let mut last_state = 0;
     let mut last_update = Instant::now();
+    let mut is_animating = false;
     loop {
         {
             let stdout = stdout();
@@ -558,395 +634,13 @@ fn manager_thread() {
             }
 
             let h = manager.hash_state();
-            if h != last_state || last_update.elapsed() > Duration::from_millis(200) {
+            let update_period = if is_animating { 33 } else { 200 };
+            if h != last_state || last_update.elapsed() > Duration::from_millis(update_period) {
                 last_state = h;
                 last_update = Instant::now();
-                manager.tick(&mut out).unwrap();
+                is_animating = manager.tick(&mut out).unwrap();
             }
         }
         thread::sleep(Duration::from_millis(20));
-    }
-}
-
-pub struct ProgressBar {
-    state: Option<Arc<Mutex<ProgressBarState>>>,
-}
-
-impl Drop for ProgressBar {
-    fn drop(&mut self) {
-        self.abandon();
-    }
-}
-
-const BAR_FILLED: char = '█';
-const BAR_EMPTY: char = ' ';
-const BAR_UNKNOWN: char = '░';
-const BAR_ABANDONED: char = 'X';
-const BAR_PARTIALLY_FILLED: [char; 9] = [BAR_EMPTY, '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
-const BAR_LEFT_BORDER: char = '▕';
-const BAR_RIGHT_BORDER: char = '▏';
-
-pub struct ProgressBarWeightedNester {
-    bar: ProgressBar,
-    taken_fraction: f64,
-}
-
-impl ProgressBarWeightedNester {
-    pub fn take(&mut self, fraction_of_total: f64) -> ProgressBar {
-        assert!(fraction_of_total.is_finite());
-        assert!(
-            fraction_of_total >= 0.0,
-            "fraction_of_total must be non-negative"
-        );
-        assert!(
-            fraction_of_total <= 1.0,
-            "fraction_of_total must be at most 1.0"
-        );
-
-        let s = Arc::new(Mutex::new(ProgressBarState {
-            is_nested: true,
-            ..Default::default()
-        }));
-        if let Some(NestedBars {
-            bars,
-            meta: NestedMeta::Weighted(weights),
-        }) = &mut self.bar.state.as_ref().unwrap().lock().unwrap().nested
-        {
-            bars.push(s.clone());
-            weights.push(fraction_of_total);
-        } else {
-            unreachable!();
-        }
-
-        self.taken_fraction += fraction_of_total;
-        ProgressBar { state: Some(s) }
-    }
-
-    pub fn remaining(&mut self) -> ProgressBar {
-        // Check if the whole progress bar has been used up already.
-        // We guard against small floating point errors by not being so strict with this check.
-        if self.taken_fraction > 1.01 {
-            panic!(
-                "There is no remaning part of the progress bar. You have already used {}% of it",
-                self.taken_fraction * 100.0
-            );
-        }
-
-        self.take((1.0 - self.taken_fraction).max(0.0))
-    }
-}
-
-pub struct ProgressBarSizedNester {
-    bar: ProgressBar,
-    taken_count: usize,
-}
-
-impl ProgressBarSizedNester {
-    pub fn take(&mut self, count: usize) -> ProgressBar {
-        let s = Arc::new(Mutex::new(ProgressBarState {
-            is_nested: true,
-            length: Some(count),
-            ..Default::default()
-        }));
-        if let Some(NestedBars {
-            bars,
-            meta: NestedMeta::Sized(counts),
-        }) = &mut self.bar.state.as_ref().unwrap().lock().unwrap().nested
-        {
-            bars.push(s.clone());
-            counts.push(count as f64);
-        } else {
-            unreachable!();
-        }
-
-        self.taken_count += count;
-        ProgressBar { state: Some(s) }
-    }
-
-    pub fn remaining(&mut self) -> ProgressBar {
-        let len = self.bar.state.as_ref().unwrap().lock().unwrap().length;
-        match len {
-            Some(len) => {
-                if let Some(remaining) = len.checked_sub(self.taken_count) {
-                    self.take(remaining)
-                } else {
-                    panic!(
-                        "There is no remaning part of the progress bar. The bar has a length of {} and you have already used {} for other nested bars.",
-                        len,
-                        self.taken_count
-                    );
-                }
-            }
-            None => {
-                panic!(
-                    "You cannot call remaining because the original bar didn't have a length set"
-                );
-            }
-        }
-    }
-}
-
-pub struct ProgressBarSummedNester {
-    bar: ProgressBar,
-}
-
-impl ProgressBarSummedNester {
-    pub fn take(&self) -> ProgressBar {
-        let s = Arc::new(Mutex::new(ProgressBarState {
-            is_nested: true,
-            ..Default::default()
-        }));
-        if let Some(NestedBars {
-            bars,
-            meta: NestedMeta::Summed,
-        }) = &mut self.bar.state.as_ref().unwrap().lock().unwrap().nested
-        {
-            bars.push(s.clone());
-        } else {
-            unreachable!();
-        }
-
-        ProgressBar { state: Some(s) }
-    }
-}
-
-impl ProgressBar {
-    pub fn new() -> Self {
-        let mut manager = MANAGER.lock().unwrap();
-        let state = Arc::new(Mutex::new(ProgressBarState::default()));
-        manager.bars.push(state.clone());
-        if manager.interactive_output && !manager.thread_started {
-            manager.thread_started = true;
-            thread::spawn(manager_thread);
-        }
-        Self { state: Some(state) }
-    }
-
-    pub fn hidden() -> Self {
-        let state = Arc::new(Mutex::new(ProgressBarState::default()));
-        Self { state: Some(state) }
-    }
-
-    pub fn split_weighted(self) -> ProgressBarWeightedNester {
-        self.state
-            .as_ref()
-            .expect("You cannot split a finished/abandoned progress bar")
-            .lock()
-            .unwrap()
-            .nested = Some(NestedBars {
-            bars: vec![],
-            meta: NestedMeta::Weighted(vec![]),
-        });
-        ProgressBarWeightedNester {
-            bar: self,
-            taken_fraction: 0.0,
-        }
-    }
-
-    pub fn split_sized(self) -> ProgressBarSizedNester {
-        self.state
-            .as_ref()
-            .expect("You cannot split a finished/abandoned progress bar")
-            .lock()
-            .unwrap()
-            .nested = Some(NestedBars {
-            bars: vec![],
-            meta: NestedMeta::Sized(vec![]),
-        });
-        ProgressBarSizedNester {
-            bar: self,
-            taken_count: 0,
-        }
-    }
-
-    pub fn split_summed(self) -> ProgressBarSummedNester {
-        self.state
-            .as_ref()
-            .expect("You cannot split a finished/abandoned progress bar")
-            .lock()
-            .unwrap()
-            .nested = Some(NestedBars {
-            bars: vec![],
-            meta: NestedMeta::Summed,
-        });
-        ProgressBarSummedNester { bar: self }
-    }
-
-    pub fn split_each<It: Iterator>(self, it: It) -> impl Iterator<Item = (ProgressBar, It::Item)> {
-        if let Some(upper_bound) = it.size_hint().1 {
-            self.set_length(upper_bound);
-        }
-        let mut splitter = self.split_sized();
-        it.map(move |v| (splitter.take(1), v))
-    }
-
-    // pub fn nest(&self) -> ProgressBar {
-    //     if let Some(state) = &self.state {
-    //         let s = Arc::new(Mutex::new(ProgressBarState {
-    //             is_nested: true,
-    //             ..Default::default()
-    //         }));
-    //         state
-    //             .lock()
-    //             .unwrap()
-    //             .nested
-    //             .push((ScaleMode::PropagateLength, s.clone()));
-    //         Self { state: Some(s) }
-    //     } else {
-    //         panic!("You cannot nest a finished progress bar");
-    //     }
-    // }
-
-    // pub fn nest_item(&self) -> ProgressBar {
-    //     if let Some(state) = &self.state {
-    //         let s = Arc::new(Mutex::new(ProgressBarState {
-    //             is_nested: true,
-    //             ..Default::default()
-    //         }));
-    //         state
-    //             .lock()
-    //             .unwrap()
-    //             .nested
-    //             .push((ScaleMode::ItemsOfParent(1), s.clone()));
-    //         Self { state: Some(s) }
-    //     } else {
-    //         panic!("You cannot nest a finished progress bar");
-    //     }
-    // }
-
-    pub fn length(&self) -> Option<usize> {
-        if let Some(state) = &self.state {
-            state.lock().unwrap().length
-        } else {
-            panic!(
-                "This progress bar is finished. You can no longer retrieve information about it."
-            );
-        }
-    }
-
-    pub fn set_length(&self, len: usize) {
-        if let Some(state) = &self.state {
-            let mut state = state.lock().unwrap();
-            state.length = Some(len);
-        }
-    }
-
-    pub fn set_position(&self, pos: usize) {
-        if let Some(state) = &self.state {
-            state.lock().unwrap().position = pos;
-        }
-    }
-
-    pub fn clear_message(&self) {
-        if let Some(state) = &self.state {
-            state.lock().unwrap().message = None;
-        }
-    }
-
-    pub fn with_message(self, message: impl Into<String>) -> Self {
-        self.set_message(message);
-        self
-    }
-
-    pub fn set_message(&self, message: impl Into<String>) {
-        let m = message.into();
-        if m.is_empty() {
-            self.clear_message();
-        } else if let Some(state) = &self.state {
-            state.lock().unwrap().message = Some(m);
-        }
-    }
-
-    pub fn inc(&self) {
-        if let Some(state) = &self.state {
-            state.lock().unwrap().position += 1;
-        }
-    }
-
-    pub fn tick() {}
-
-    pub fn finish_with_message(&mut self, message: impl Into<String>) {
-        self.set_message(message);
-        self.finish();
-    }
-
-    /** Abandons the progress bar.
-     *
-     * The remaining part of the progress bar will be colored red to indicate it will never be completed.
-     * Progress bars are automatically marked as abandoned when they are dropped.
-     */
-    pub fn abandon(&mut self) {
-        if let Some(state) = &self.state {
-            let mut state = state.lock().unwrap();
-            state.finished = FinishedState::Abandoned;
-        }
-        self.state = None;
-
-        let mut manager = MANAGER.lock().unwrap();
-        manager.tick(&mut std::io::stdout().lock()).unwrap();
-    }
-
-    pub fn finish(&mut self) {
-        if let Some(state) = &self.state {
-            let mut state = state.lock().unwrap();
-            if let Some(length) = state.length {
-                state.position = length;
-            }
-            state.finished = FinishedState::Completed;
-        }
-        self.state = None;
-
-        let mut manager = MANAGER.lock().unwrap();
-        manager.tick(&mut std::io::stdout().lock()).unwrap();
-    }
-
-    pub fn wrap<It: Iterator>(self, it: It) -> ProgressBarIterator<It> {
-        if let Some(upper_bound) = it.size_hint().1 {
-            self.set_length(upper_bound);
-        }
-        ProgressBarIterator {
-            progress: self,
-            inner: it,
-        }
-    }
-}
-
-pub struct ProgressBarIterator<It: Iterator> {
-    progress: ProgressBar,
-    inner: It,
-}
-
-impl<It: Iterator> Iterator for ProgressBarIterator<It> {
-    type Item = It::Item;
-
-    fn next(&mut self) -> Option<It::Item> {
-        let r = self.inner.next();
-        if r.is_none() {
-            self.progress.finish();
-        } else {
-            self.progress.inc();
-        }
-        r
-    }
-}
-
-impl<T, It: ExactSizeIterator<Item = T>> ExactSizeIterator for ProgressBarIterator<It> {
-    fn len(&self) -> usize {
-        self.inner.len()
-    }
-}
-
-pub trait ProgressBarIterable: Iterator + Sized {
-    fn progress(self) -> ProgressBarIterator<Self>;
-    fn progress_with(self, bar: ProgressBar) -> ProgressBarIterator<Self>;
-}
-
-impl<T, It: Iterator<Item = T>> ProgressBarIterable for It {
-    fn progress(self) -> ProgressBarIterator<It> {
-        self.progress_with(ProgressBar::new())
-    }
-
-    fn progress_with(self, bar: ProgressBar) -> ProgressBarIterator<It> {
-        bar.wrap(self)
     }
 }
