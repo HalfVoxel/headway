@@ -27,6 +27,10 @@ impl ProgressBar {
     /// Creates a new progress bar.
     ///
     /// ```
+    /// use advance::ProgressBar;
+    /// # use std::time::Duration;
+    /// # use std::thread::sleep;
+    ///
     /// let p = ProgressBar::new().with_message("Calibrating flux capacitors");
     /// for _ in p.wrap(0..100) {
     ///     sleep(Duration::from_millis(20));
@@ -60,6 +64,10 @@ impl ProgressBar {
     /// The display will automatically change to percentages if this mode of splitting is used.
     ///
     /// ```
+    /// # use std::time::Duration;
+    /// # use std::thread::sleep;
+    /// use advance::{ProgressBar, ProgressBarIterable};
+    ///
     /// let mut p = ProgressBar::new().split_weighted();
     /// let first_half = p.take(0.4).with_message("First part");
     /// let second_half = p.take(0.6).with_message("Second part");
@@ -93,6 +101,10 @@ impl ProgressBar {
     /// Note that the children can have any length, but a filled child bar will be remapped to N items in the parent.
     ///
     /// ```
+    /// # use std::time::Duration;
+    /// # use std::thread::sleep;
+    /// use advance::ProgressBar;
+    ///
     /// let mut p = ProgressBar::new().split_sized();
     /// // Create the bars up front so that the bar knows how many items
     /// // there are in total.
@@ -129,11 +141,15 @@ impl ProgressBar {
     /// Splits the bar into children and displays the summed progress of all children.
     ///
     /// ```
+    /// # use std::time::Duration;
+    /// # use std::thread::sleep;
+    /// use advance::ProgressBar;
+    ///
     /// let p = ProgressBar::new().split_summed();
     /// let tasks = (0..4)
     ///     .map(|_| {
     ///         let child_bar = p.take();
-    ///         tokio::task::spawn(async move {
+    ///         std::thread::spawn(move || {
     ///             for _ in child_bar.wrap(0..100) {
     ///                 sleep(Duration::from_millis(20));
     ///             }
@@ -141,7 +157,7 @@ impl ProgressBar {
     ///     })
     ///     .collect::<Vec<_>>();
     /// for task in tasks {
-    ///     task.await.unwrap()
+    ///     task.join().unwrap()
     /// }
     /// ```
     #[doc=include_str!("../images/split_summed.html")]
@@ -163,6 +179,10 @@ impl ProgressBar {
     /// This is useful if each item takes a long time and you want progress for it.
     /// It is also useful if you are sending each item to separate threads to process them independently.
     /// ```
+    /// # use std::time::Duration;
+    /// # use std::thread::sleep;
+    /// use advance::ProgressBar;
+    ///
     /// let p = ProgressBar::new();
     /// // Split the progress bar into 10 nested bars
     /// for (nested_bar, i) in p.split_each(0..10) {
@@ -304,6 +324,10 @@ impl ProgressBar {
     /// See also [`ProgressBarIterable::progress`] and [`ProgressBarIterable::progress_with`]
     ///
     /// ```
+    /// # use std::time::Duration;
+    /// # use std::thread::sleep;
+    /// use advance::ProgressBar;
+    ///
     /// let p = ProgressBar::new().with_message("Calibrating flux capacitors");
     /// for _ in p.wrap(0..100) {
     ///     sleep(Duration::from_millis(20));
@@ -353,6 +377,9 @@ pub trait ProgressBarIterable: Iterator + Sized {
     /// The returned iterator yields the same items as the original.
     ///
     /// ```
+    /// use advance::ProgressBarIterable;
+    /// # use std::time::Duration;
+    /// # use std::thread::sleep;
     /// for _ in (0..100).progress() {
     ///     sleep(Duration::from_millis(20));
     /// }

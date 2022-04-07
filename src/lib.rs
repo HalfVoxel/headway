@@ -3,6 +3,10 @@
 //! # Usage
 //!
 //! ```
+//! use advance::ProgressBarIterable;
+//! # use std::time::Duration;
+//! # use std::thread::sleep;
+//!
 //! for _ in (0..100).progress() {
 //!     sleep(Duration::from_millis(20));
 //! }
@@ -15,6 +19,11 @@
 //! be placed so that they do not overlap.
 //!
 //! ```
+//! use advance::ProgressBarIterable;
+//! # use std::time::Duration;
+//! # use std::thread::sleep;
+//! # use std::thread;
+//!
 //! let mut handles = vec![];
 //! for i in 0..5 {
 //!     handles.push(thread::spawn(move || {
@@ -34,6 +43,10 @@
 //! You can split bars into smaller bars if you have a task that consists of several sub-tasks.
 //!
 //! ```
+//! use advance::{ProgressBar, ProgressBarIterable};
+//! # use std::time::Duration;
+//! # use std::thread::sleep;
+//!
 //! let mut p = ProgressBar::new().split_weighted();
 //! let first_half = p.take(0.4).with_message("First part");
 //! let second_half = p.take(0.6).with_message("Second part");
@@ -49,6 +62,10 @@
 //! You can also split in other ways, not just using fractions.
 //!
 //! ```
+//! # use std::time::Duration;
+//! # use std::thread::sleep;
+//! use advance::ProgressBar;
+//!
 //! // Split the bar into bars taking up a fixed fraction of the parent
 //! let mut p = ProgressBar::new().split_weighted();
 //! let first_quarter = p.take(0.25);
@@ -79,6 +96,10 @@
 //!
 //! This library interacts properly with stdout so you can freely use `println` while a progress bar (or multiple) is visible.
 //! ```
+//! use advance::ProgressBarIterable;
+//! # use std::time::Duration;
+//! # use std::thread::sleep;
+//!
 //! for i in (0..100).progress() {
 //!     if i % 10 == 0 {
 //!         println!("{}", i);
@@ -94,15 +115,19 @@
 //!
 //! ## Abandoning bars
 //!
-//! If you abandon a bar without finishing it (for example because of a worker thread crashed), then the bar
-//! will draw angry red marks to draw your attention.
+//! If you abandon a bar without finishing it (for example because a worker thread crashed), then the bar
+//! will draw angry red marks to draw your attention. You can also explicitly abandon a bar using [`ProgressBar::abandon`].
 //!
-//! ```
+//! ```should_panic
+//! use advance::ProgressBarIterable;
+//! # use std::time::Duration;
+//! # use std::thread::sleep;
+//!
 //! for i in (0..100).progress() {
 //!     if i == 20 {
 //!         panic!("Something went wrong!");
 //!     }
-//!     thread::sleep(Duration::from_millis(50));
+//!     sleep(Duration::from_millis(50));
 //! }
 //! ```
 #![doc=include_str!("../images/abandonment.html")]
@@ -112,6 +137,10 @@
 //! If the progress bar doesn't have a known length, the bar will show an animation instead.
 //!
 //! ```
+//! use advance::ProgressBarIterable;
+//! # use std::time::Duration;
+//! # use std::thread::sleep;
+//!
 //! for i in (0..).progress() {
 //!     if i == 100 {
 //!         break;
@@ -156,8 +185,6 @@ lazy_static! {
         Arc::new(Mutex::new(ProgressBarManager {
             bars: vec![],
             thread_started: false,
-            stdout_buff: None,
-            stderr_buff: None,
             interactive_output: atty::is(atty::Stream::Stdout),
             reference_time: Instant::now(),
         }));
@@ -532,8 +559,6 @@ impl ProgressBarState {
 struct ProgressBarManager {
     pub bars: Vec<Arc<Mutex<ProgressBarState>>>,
     pub thread_started: bool,
-    stdout_buff: Option<gag::Hold>,
-    stderr_buff: Option<gag::Hold>,
     interactive_output: bool,
     reference_time: Instant,
 }
@@ -595,22 +620,17 @@ impl ProgressBarManager {
         }
 
         write!(out, "{}", &temp_output)?;
-        // Flush stdout and stderr which have been buffered since the last tick
-        self.stdout_buff = None;
-        self.stderr_buff = None;
 
         if !self.bars.is_empty() {
-            // self.stdout_buff = Some(gag::Hold::stdout().unwrap());
-            // self.stderr_buff = Some(gag::Hold::stderr().unwrap());
-
-            // Move to start of line N lines up and then clear everything after the cursor to end of screen.
-            // DO NOT flush after this.
-            // This will make sure that if something is printed out stdout it will first
+            // Move to start of line N lines up
+            // Together with the clearing below, this will make sure that if something is printed out stdout it will first
             // remove the progress bars and then print whatever it was printing.
             let prev_lines = self.bars.len();
             write!(out, "\u{001b}[{}F", prev_lines)?;
         }
         out.flush().unwrap();
+        // then clear everything after the cursor to end of screen.
+        // DO NOT flush after this.
         write!(out, "\u{001b}[0J")?;
 
         Ok(is_animating)

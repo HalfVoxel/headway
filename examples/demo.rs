@@ -151,7 +151,7 @@ pub async fn split_summed() {
     let tasks = (0..4)
         .map(|_| {
             let child_bar = p.take();
-            tokio::task::spawn(async move {
+            thread::spawn(move || {
                 for _ in child_bar.wrap(0..100) {
                     sleep(Duration::from_millis(20));
                 }
@@ -159,7 +159,7 @@ pub async fn split_summed() {
         })
         .collect::<Vec<_>>();
     for task in tasks {
-        task.await.unwrap()
+        task.join().unwrap()
     }
 }
 
