@@ -23,6 +23,11 @@ impl Default for ProgressBar {
     }
 }
 
+/// A convenient progress bar.
+///
+/// See the module documentation for example code and more documentation.
+///
+#[doc=include_str!("../images/simple.html")]
 impl ProgressBar {
     /// Creates a new progress bar.
     ///
@@ -36,7 +41,7 @@ impl ProgressBar {
     ///     sleep(Duration::from_millis(20));
     /// }
     /// ```
-    #[doc=include_str!("../images/simple2.html")]
+    #[doc=include_str!("../images/message.html")]
     pub fn new() -> Self {
         let mut manager = MANAGER.lock().unwrap();
         let state = Arc::new(Mutex::new(ProgressBarState::default()));
@@ -241,13 +246,13 @@ impl ProgressBar {
         }
     }
 
-    /// Equivalent to `set_message`, but may be more ergonomic in some situations since it returns `self`.
+    /// Equivalent to [`Self::set_message`], but may be more ergonomic in some situations since it returns `self`.
     pub fn with_message(self, message: impl Into<String>) -> Self {
         self.set_message(message);
         self
     }
 
-    /// Equivalent to `set_length`, but may be more ergonomic in some situations since it returns `self`.
+    /// Equivalent to [`Self::set_length`], but may be more ergonomic in some situations since it returns `self`.
     pub fn with_length(self, length: usize) -> Self {
         self.set_length(length);
         self
@@ -334,7 +339,7 @@ impl ProgressBar {
     /// }
     /// ```
     ///
-    #[doc=include_str!("../images/simple2.html")]
+    #[doc=include_str!("../images/message.html")]
     pub fn wrap<It: Iterator>(self, it: It) -> ProgressBarIterator<It> {
         if let Some(upper_bound) = it.size_hint().1 {
             self.set_length(upper_bound);

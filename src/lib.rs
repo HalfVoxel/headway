@@ -48,8 +48,8 @@
 //! # use std::thread::sleep;
 //!
 //! let mut p = ProgressBar::new().split_weighted();
-//! let first_half = p.take(0.4).with_message("First part");
-//! let second_half = p.take(0.6).with_message("Second part");
+//! let first_half = p.take(0.5).with_message("First part");
+//! let second_half = p.take(0.5).with_message("Second part");
 //! for _ in (0..50).progress_with(first_half) {
 //!     sleep(Duration::from_millis(20));
 //! }
@@ -110,8 +110,8 @@
 #![doc=include_str!("../images/print_during_progress.html")]
 //!
 //! ### Caveats
-//! Printing to stderr has the potential to mess things up. However, if you flush `stdout` before you print to stderr then things should work properly.
-//! If a child process prints to stdout, this also has the potential to mess things up.
+//! Printing to `stderr` has the potential to mess things up. However, if you flush `stdout` before you print to `stderr` then things should work properly.
+//! If a child process prints to `stdout`, this also has the potential to mess things up.
 //!
 //! ## Abandoning bars
 //!
@@ -153,6 +153,11 @@
 //! ## Styling
 //!
 //! It is currently not possible to style bars in any way.
+//!
+//! ## Alternative crates
+//!
+//! * [Indicatif](https://docs.rs/indicatif/latest/indicatif/) - A crate which supports progress bars and spinners and lots of styling.
+//!    However it is less ergonomic, especially when working with multiple progress bars. It also interacts poorly with simultaneous printing to stdout.
 
 use lazy_static::lazy_static;
 use std::collections::hash_map::DefaultHasher;
