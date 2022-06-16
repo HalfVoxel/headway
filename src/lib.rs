@@ -252,17 +252,26 @@ impl ProgressBarState {
             match &nested.meta {
                 NestedMeta::Sized(weights) | NestedMeta::Weighted(weights) => {
                     for (w, bar) in weights.iter().zip(&nested.bars) {
-                        let (mut progress, mut in_progress, abandoned, _lower_len, upper_len) =
+                        let (mut progress, mut in_progress, abandoned, lower_len, upper_len) =
                             bar.lock().unwrap().progress_count();
 
                         total_lower_len += w;
                         total_upper_len = total_upper_len.map(|x| x + w);
 
                         if upper_len.is_none() {
-                            // If we don't know the upper bound on the length of the child bar, then we can't say anything other than that
-                            // things are in progress, but we don't actually know the percentage progress at all.
-                            progress = 0.0;
-                            in_progress = 1.0 - abandoned;
+                            if lower_len == 0.0 {
+                                // If the child bar has no known upper bound on its length we normally cannot say anything other than that its in progress.
+                                // However, if the bar has made no actual progress then this is a well defined state.
+                                // This is important because when splitting bars and working on tasks sequentially, often the bars that come
+                                // later have no well defined length before the program actually starts working on them.
+                                progress = 0.0;
+                                in_progress = 0.0;
+                            } else {
+                                // If we don't know the upper bound on the length of the child bar, then we can't say anything other than that
+                                // things are in progress, but we don't actually know the percentage progress at all.
+                                progress = 0.0;
+                                in_progress = 1.0 - abandoned;
+                            }
                         }
                         total_progress += (progress as f64) * w;
                         total_abandoned += (abandoned as f64) * w;
