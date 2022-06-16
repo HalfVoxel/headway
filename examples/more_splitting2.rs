@@ -1,5 +1,6 @@
 use advance::{ProgressBar, ProgressBarIterable};
-use std::{thread::sleep, time::Duration};
+use std::time::Duration;
+use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() {
@@ -13,7 +14,7 @@ async fn main() {
         let inner_progress = first_half.take(20);
         tokio::task::spawn(async move {
             for _ in (0..20).progress_with(inner_progress) {
-                sleep(Duration::from_millis(30));
+                sleep(Duration::from_millis(30)).await;
             }
         });
     }
@@ -21,6 +22,6 @@ async fn main() {
     // The second half is processed independently
     let second_half = p.take(0.5).with_message("Second part");
     for _ in (0..50).progress_with(second_half) {
-        sleep(Duration::from_millis(40));
+        sleep(Duration::from_millis(40)).await;
     }
 }
