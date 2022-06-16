@@ -411,6 +411,7 @@ impl ProgressBarState {
             for b in &nested.bars {
                 completed &= b.lock().unwrap().visit_completed(visitor);
             }
+            visitor(completed, self);
             completed
         } else {
             let completed = self.length.map(|l| self.position >= l).unwrap_or(false)
@@ -446,7 +447,7 @@ impl ProgressBarState {
             // Last completed bar
             self.visit_completed(&mut |_, bar| {
                 if bar.message.is_some() {
-                    // TODO: Kind suboptimal
+                    // TODO: Kinda suboptimal
                     msg = bar.message.clone();
                 }
             });
