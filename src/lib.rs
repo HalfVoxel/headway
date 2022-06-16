@@ -551,7 +551,7 @@ impl ProgressBarState {
                 ..
             })
         ) {
-            write!(out, " {}/", (progress_value * length_lower).round())?;
+            write!(out, " {}/", (progress_value * length_lower).floor())?;
             if let Some(length_upper) = length_upper {
                 write!(out, "{}", length_upper)?;
             } else {
