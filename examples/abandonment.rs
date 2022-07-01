@@ -14,5 +14,4 @@ async fn main() {
     })
     .join()
     .ok();
-    // sleep(Duration::from_millis(3000));
 }
