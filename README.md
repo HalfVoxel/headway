@@ -2,7 +2,7 @@
 
 Headway is a progress bar library focused on ergonomics, just getting out of your way and letting you get back to writing all that other code.
 
-![example](images/multiple.svg)
+![example](https://raw.githubusercontent.com/HalfVoxel/headway/main/images/multiple.svg)
 
 ## Installation
 
