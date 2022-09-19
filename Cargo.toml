@@ -2,6 +2,7 @@
 name = "advance"
 version = "0.1.0"
 edition = "2021"
+authors = ["Aron Granberg <aron.granberg@gmail.com>"]
 description = "An ergonomic progress bar library"
 homepage = "https://github.com/HalfVoxel/advance"
 documentation = "https://docs.rs/advance"
