@@ -1,6 +1,6 @@
 [package]
 name = "headway"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Aron Granberg <aron.granberg@gmail.com>"]
 description = "An ergonomic progress bar library"
