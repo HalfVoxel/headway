@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::{NestedBars, NestedMeta, ProgressBar, ProgressBarState};
 
+/// Helper for spliting progress bars
 pub struct ProgressBarWeightedNester {
     pub(crate) bar: ProgressBar,
     pub(crate) taken_fraction: f64,
@@ -54,6 +55,7 @@ impl ProgressBarWeightedNester {
     }
 }
 
+/// Helper for spliting progress bars
 pub struct ProgressBarSizedNester {
     pub(crate) bar: ProgressBar,
     pub(crate) taken_count: usize,
@@ -110,6 +112,7 @@ impl ProgressBarSizedNester {
     }
 }
 
+/// Helper for spliting progress bars
 pub struct ProgressBarSummedNester {
     pub(crate) bar: ProgressBar,
 }

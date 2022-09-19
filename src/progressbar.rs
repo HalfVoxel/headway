@@ -7,6 +7,9 @@ use crate::{
 };
 use crate::{ProgressBarState, ProgressBarWeightedNester};
 
+/// A convenient progress bar.
+///
+/// See the [module documentation](crate) for example code and more documentation.
 pub struct ProgressBar {
     pub(crate) state: Option<Arc<Mutex<ProgressBarState>>>,
 }
@@ -23,9 +26,6 @@ impl Default for ProgressBar {
     }
 }
 
-/// A convenient progress bar.
-///
-/// See the [module documentation](crate) for example code and more documentation.
 #[doc=include_str!("../images/simple.html")]
 impl ProgressBar {
     /// Creates a new progress bar.
@@ -350,6 +350,23 @@ impl ProgressBar {
     }
 }
 
+/// A progress bar that wraps an iterator.
+///
+/// You can wrap an iterator by either calling `.progress()` on an existing iterator,
+/// or by calling [`ProgressBar::wrap`] on an existing progress bar.
+///
+/// The values returned by the wrapped iterator are identical to the original iterator.
+///
+/// The progress bar will be marked as finished when the iterator is exhausted.
+///
+/// ```
+/// use headway::ProgressBarIterable;
+/// # use std::time::Duration;
+/// # use std::thread::sleep;
+/// for _ in (0..100).progress() {
+///     sleep(Duration::from_millis(20));
+/// }
+/// ```
 pub struct ProgressBarIterator<It: Iterator> {
     progress: ProgressBar,
     inner: It,
