@@ -392,6 +392,16 @@ impl<T, It: ExactSizeIterator<Item = T>> ExactSizeIterator for ProgressBarIterat
     }
 }
 
+impl<It: Iterator> ProgressBarIterator<It> {
+    /// Sets the message of the progress bar.
+    ///
+    /// Equivalent to [`ProgressBar::set_message`].
+    pub fn with_message(self, message: &str) -> Self {
+        self.progress.set_message(message);
+        self
+    }
+}
+
 pub trait ProgressBarIterable: Iterator + Sized {
     /// Show a progress bar while iterating.
     ///
