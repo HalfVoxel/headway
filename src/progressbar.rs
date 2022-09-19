@@ -25,8 +25,7 @@ impl Default for ProgressBar {
 
 /// A convenient progress bar.
 ///
-/// See the module documentation for example code and more documentation.
-///
+/// See the [module documentation](crate) for example code and more documentation.
 #[doc=include_str!("../images/simple.html")]
 impl ProgressBar {
     /// Creates a new progress bar.
@@ -239,7 +238,7 @@ impl ProgressBar {
         }
     }
 
-    /// Clears any message set using `set_message` or `with_message`.
+    /// Clears any message set using [`Self::set_message`] or [`Self::with_message`].
     pub fn clear_message(&self) {
         if let Some(state) = &self.state {
             state.lock().unwrap().message = None;
