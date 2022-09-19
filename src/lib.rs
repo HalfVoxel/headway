@@ -28,6 +28,7 @@
 //! for i in 0..5 {
 //!     handles.push(thread::spawn(move || {
 //!         for _ in (0..100).progress() {
+//!             // Sleep for a bit to simulate work.
 //!             sleep(Duration::from_millis(20 + i * 20));
 //!         }
 //!     }));
