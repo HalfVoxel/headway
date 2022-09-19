@@ -1,4 +1,4 @@
-use advance::{ProgressBar, ProgressBarIterable};
+use headway::{ProgressBar, ProgressBarIterable};
 use std::time::Duration;
 use tokio::time::sleep;
 

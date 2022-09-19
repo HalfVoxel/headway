@@ -3,7 +3,7 @@
 //! # Usage
 //!
 //! ```
-//! use advance::ProgressBarIterable;
+//! use headway::ProgressBarIterable;
 //! # use std::time::Duration;
 //! # use std::thread::sleep;
 //!
@@ -19,7 +19,7 @@
 //! be placed so that they do not overlap.
 //!
 //! ```
-//! use advance::ProgressBarIterable;
+//! use headway::ProgressBarIterable;
 //! # use std::time::Duration;
 //! # use std::thread::sleep;
 //! # use std::thread;
@@ -43,7 +43,7 @@
 //! You can split bars into smaller bars if you have a task that consists of several sub-tasks.
 //!
 //! ```
-//! use advance::{ProgressBar, ProgressBarIterable};
+//! use headway::{ProgressBar, ProgressBarIterable};
 //! # use std::time::Duration;
 //! # use std::thread::sleep;
 //!
@@ -64,7 +64,7 @@
 //! ```
 //! # use std::time::Duration;
 //! # use std::thread::sleep;
-//! use advance::ProgressBar;
+//! use headway::ProgressBar;
 //!
 //! // Split the bar into bars taking up a fixed fraction of the parent
 //! let mut p = ProgressBar::new().split_weighted();
@@ -96,7 +96,7 @@
 //!
 //! This library interacts properly with stdout so you can freely use `println` while a progress bar (or multiple) is visible.
 //! ```
-//! use advance::ProgressBarIterable;
+//! use headway::ProgressBarIterable;
 //! # use std::time::Duration;
 //! # use std::thread::sleep;
 //!
@@ -119,7 +119,7 @@
 //! will draw angry red marks to draw your attention. You can also explicitly abandon a bar using [`ProgressBar::abandon`].
 //!
 //! ```should_panic
-//! use advance::ProgressBarIterable;
+//! use headway::ProgressBarIterable;
 //! # use std::time::Duration;
 //! # use std::thread::sleep;
 //!
@@ -137,7 +137,7 @@
 //! If the progress bar doesn't have a known length, the bar will show an animation instead.
 //!
 //! ```
-//! use advance::ProgressBarIterable;
+//! use headway::ProgressBarIterable;
 //! # use std::time::Duration;
 //! # use std::thread::sleep;
 //!

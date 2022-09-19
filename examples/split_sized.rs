@@ -1,4 +1,4 @@
-use advance::ProgressBar;
+use headway::ProgressBar;
 use std::{thread::sleep, time::Duration};
 
 pub fn main() {

@@ -1,4 +1,4 @@
-use advance::ProgressBarIterable;
+use headway::ProgressBarIterable;
 use std::{thread, thread::sleep, time::Duration};
 
 pub fn main() {

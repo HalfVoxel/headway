@@ -32,7 +32,7 @@ impl ProgressBar {
     /// Creates a new progress bar.
     ///
     /// ```
-    /// use advance::ProgressBar;
+    /// use headway::ProgressBar;
     /// # use std::time::Duration;
     /// # use std::thread::sleep;
     ///
@@ -71,7 +71,7 @@ impl ProgressBar {
     /// ```
     /// # use std::time::Duration;
     /// # use std::thread::sleep;
-    /// use advance::{ProgressBar, ProgressBarIterable};
+    /// use headway::{ProgressBar, ProgressBarIterable};
     ///
     /// let mut p = ProgressBar::new().split_weighted();
     /// let first_half = p.take(0.4).with_message("First part");
@@ -108,7 +108,7 @@ impl ProgressBar {
     /// ```
     /// # use std::time::Duration;
     /// # use std::thread::sleep;
-    /// use advance::ProgressBar;
+    /// use headway::ProgressBar;
     ///
     /// let mut p = ProgressBar::new().split_sized();
     /// // Create the bars up front so that the bar knows how many items
@@ -148,7 +148,7 @@ impl ProgressBar {
     /// ```
     /// # use std::time::Duration;
     /// # use std::thread::sleep;
-    /// use advance::ProgressBar;
+    /// use headway::ProgressBar;
     ///
     /// let p = ProgressBar::new().split_summed();
     /// let tasks = (0..4)
@@ -186,7 +186,7 @@ impl ProgressBar {
     /// ```
     /// # use std::time::Duration;
     /// # use std::thread::sleep;
-    /// use advance::ProgressBar;
+    /// use headway::ProgressBar;
     ///
     /// let p = ProgressBar::new();
     /// // Split the progress bar into 10 nested bars
@@ -323,7 +323,7 @@ impl ProgressBar {
     /// Wraps the bar around an iterator.
     ///
     /// If the iterator has a known length, the bar's length will be set to that length.
-    /// The iterator will advance the progress by 1 each step.
+    /// The iterator will headway the progress by 1 each step.
     /// When reaching the end of the iterator, the bar will be marked as finished.
     ///
     /// See also [`ProgressBarIterable::progress`] and [`ProgressBarIterable::progress_with`]
@@ -331,7 +331,7 @@ impl ProgressBar {
     /// ```
     /// # use std::time::Duration;
     /// # use std::thread::sleep;
-    /// use advance::ProgressBar;
+    /// use headway::ProgressBar;
     ///
     /// let p = ProgressBar::new().with_message("Calibrating flux capacitors");
     /// for _ in p.wrap(0..100) {
@@ -382,7 +382,7 @@ pub trait ProgressBarIterable: Iterator + Sized {
     /// The returned iterator yields the same items as the original.
     ///
     /// ```
-    /// use advance::ProgressBarIterable;
+    /// use headway::ProgressBarIterable;
     /// # use std::time::Duration;
     /// # use std::thread::sleep;
     /// for _ in (0..100).progress() {

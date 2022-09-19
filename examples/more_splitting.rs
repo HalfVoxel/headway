@@ -1,7 +1,7 @@
 use std::time::Duration;
 use tokio::time::sleep;
 
-use advance::ProgressBar;
+use headway::ProgressBar;
 
 async fn complete_in_one_second(p: ProgressBar) {
     for _ in p.wrap(0..100) {

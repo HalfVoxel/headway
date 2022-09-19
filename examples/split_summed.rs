@@ -1,4 +1,4 @@
-use advance::ProgressBar;
+use headway::ProgressBar;
 use std::{thread, thread::sleep, time::Duration};
 
 #[tokio::main]
