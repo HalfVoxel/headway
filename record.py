@@ -21,7 +21,7 @@ for file in os.listdir("images"):
 
 
 svgs = [
-    Popen(["svg-term", "--command", f"../target/release/examples/{demo}",  "--no-cursor",
+    Popen(["svg-term", "--command", f"target/release/examples/{demo}",  "--no-cursor",
            "--width", "60", "--height", str(height)], stdout=PIPE)
     for (demo, height) in demos
 ]
@@ -42,8 +42,8 @@ for ((demo, height), svg) in zip(demos, svgs):
     out = re.sub(r"to(\{.*?\})",
                  fr"{round(100*multiplier,2)}%\1 to\1", out)
 
-    # with open("images/" + demo + ".svg", "wb") as f:
-    #     f.write(out.encode('utf-8'))
+    with open("images/" + demo + ".svg", "wb") as f:
+        f.write(out.encode('utf-8'))
 
     encoded = base64.b64encode(out.encode('utf-8'))
     with open("images/" + demo + ".html", "wb") as f:
@@ -51,4 +51,3 @@ for ((demo, height), svg) in zip(demos, svgs):
         f.write(encoded)
         f.write(b"\" />")
 
-# printf "<img src=\"data:image/svg+xml;base64,%s\" />" "$(svg-term --command "../target/release/examples/demo $i" --no-cursor --width 60 --height 1 | base64 --wrap 0)" > "images/$i.svg"&
