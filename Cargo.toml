@@ -7,9 +7,13 @@ homepage = "https://github.com/HalfVoxel/advance"
 documentation = "https://docs.rs/advance"
 keywords = ["progressbar", "indicator", "progress", "cli"]
 categories = ["command-line-interface"]
-exclude = ["/images"]
 license = "MIT"
 readme = "README.md"
+include = [
+    "**/*.rs",
+    "Cargo.toml",
+    "images/*.html"
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
