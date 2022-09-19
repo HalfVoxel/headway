@@ -1,5 +1,8 @@
 # Headway - An ergonomic progress bar library
 
+[![Crate](https://img.shields.io/crates/v/headway.svg)](https://crates.io/crates/headway)
+[![API](https://docs.rs/headway/badge.svg)](https://docs.rs/headway)
+
 Headway is a progress bar library focused on ergonomics, just getting out of your way and letting you get back to writing all that other code.
 
 ![example](https://raw.githubusercontent.com/HalfVoxel/headway/main/images/multiple.svg)
