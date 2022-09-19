@@ -1,6 +1,6 @@
 [package]
 name = "headway"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Aron Granberg <aron.granberg@gmail.com>"]
 description = "An ergonomic progress bar library"
@@ -15,8 +15,6 @@ include = [
     "Cargo.toml",
     "images/*.html"
 ]
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 lazy_static = "1.4"
