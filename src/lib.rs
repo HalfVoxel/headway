@@ -170,6 +170,7 @@ use std::time::{Duration, Instant};
 mod progressbar;
 mod splitting;
 pub use progressbar::{ProgressBar, ProgressBarIterable, ProgressBarIterator};
+use is_terminal::IsTerminal;
 pub use splitting::*;
 
 use std::{
@@ -191,7 +192,7 @@ lazy_static! {
         Arc::new(Mutex::new(ProgressBarManager {
             bars: vec![],
             thread_started: false,
-            interactive_output: atty::is(atty::Stream::Stdout),
+            interactive_output: stdout().is_terminal(),
             reference_time: Instant::now(),
         }));
 }
